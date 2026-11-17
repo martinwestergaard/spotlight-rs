@@ -488,9 +488,11 @@ mod tests {
 
     #[test]
     fn slow_presses_do_not_switch() {
-        let mut s = State::new(cfg());
+        let c = cfg();
+        let just_too_slow = c.input.double_press_ms + 1;
+        let mut s = State::new(c);
         s.top_press(0);
-        assert_eq!(s.top_press(401), vec![]);
+        assert_eq!(s.top_press(just_too_slow), vec![]);
         assert_eq!(s.mode(), Mode::Highlight);
     }
 

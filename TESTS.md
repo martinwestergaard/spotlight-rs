@@ -24,7 +24,7 @@ Tell me: lag, whether the circle sits exactly on the cursor, anything odd at the
 Tap the top button twice quickly, then hold and move
 Expect: log line "mode: Magnify" and the zoomed active window inside the ring (highlight and magnify are on by default, circle is off); a second double press goes back to Highlight
 Known: the taps are swallowed (input.swallow_clicks), so they do not click
-Tell me: how fast you can double press before it stops counting (the window is 400 ms in the config)
+Tell me: how fast you can double press before it stops counting (the window is 700 ms in the config)
 
 ## 4 Timer
 mkdir -p ~/.config/spotlight-rs && ./target/debug/spotlight-rs example-config > ~/.config/spotlight-rs/config.toml
@@ -73,7 +73,7 @@ Then steps 1, 2, 3, 7 and 9. Check the log line "scale ..." matches the screen's
 - 5 hot reload while running: works
 - Double press with the slideshow up: slides no longer advance (remote mouse taken over, taps swallowed)
 - Hold Next (blank screen): works in Google Slides; LibreOffice Impress does not react to the B key
-- Digital laser on a hold of Back (hold.back = "laser"): red dot follows, arrow cursor hidden, gone on release
+- Digital laser on a hold of Back (the default, hold.back = "laser"): red dot follows, arrow cursor hidden, gone on release
 - Cursor hidden during highlight and laser, kept in circle (look.hide_cursor)
 - 7 vibration: buzzes; timer warning and end buzz (run with --timer-now and a short [timer] config to try it): one short buzz, then one long
 - Top button hold: stays up while the hand is still and hides on release (diverted over HID++, control 0x00d8); taps still arrive as BTN_LEFT

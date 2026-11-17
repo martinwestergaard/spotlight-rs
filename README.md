@@ -11,8 +11,8 @@ Built and tested with one Spotlight (receiver 046d:c53e) on COSMIC
 | Mode | What you see | Default |
 |---|---|---|
 | Highlight | Screen dims, clear circle around the pointer | On |
-| Magnify | Live zoom of the active window inside a circle | On |
-| Laser | Glowing red dot while Back is held | Set `hold.back = "laser"` |
+| Magnify | Live zoom of the active window inside a circle, empty outside that window | On |
+| Laser | Glowing red dot while Back is held | On (`hold.back = "laser"`) |
 | Circle | Plain ring | Off |
 
 - Double press the top button to switch modes
@@ -28,7 +28,7 @@ Built and tested with one Spotlight (receiver 046d:c53e) on COSMIC
 - Rust 1.85 or newer with `cargo` (edition 2024), and a C linker (`build-essential` on Ubuntu-based systems)
 - `sudo` once for a udev rule
 
-No other system libraries: the program links only `libc` and `libgcc_s`. The project is all Rust, with no shell scripts. The commands below work in bash and fish
+No other system libraries are needed (the program links only `libc` and `libgcc_s`). There are no scripts: the commands below work in bash and fish
 
 ## Install
 
@@ -42,7 +42,7 @@ target/release/spotlight-rs setup
 
 If your distribution's Rust is older than 1.85 (`rustc --version`), use rustup instead. `cargo install --path .` puts the program on your path
 
-`setup` checks the receiver, input nodes, compositor and `/dev/uinput`, and prints the fix for anything `MISSING`. It never runs sudo
+`setup` checks the receiver, input nodes, compositor and `/dev/uinput`, and prints the fix for anything `MISSING`
 
 ### Device access
 
@@ -70,17 +70,15 @@ Run `setup` again until every line says `ok`
 target/release/spotlight-rs
 ```
 
-Leave it running in a terminal and stop it with Ctrl+C. Closing the terminal or `kill` also stops it cleanly. The rest of this README writes `spotlight-rs`, which works once the program is on your path. Everything is logged to the terminal
+Leave it running in a terminal. Ctrl+C or `kill` stops it and undoes what it changed on the remote
 
 | You do | Result |
 |---|---|
 | Hold the top button and move | Current mode follows the remote, stays while held even when still, hides on release |
-| Double press the top button | Next mode (two taps within 400 ms). The first mode is highlight |
+| Double press the top button | Next mode (two taps within 700 ms). The first mode is highlight |
 | Hold Next | Runs `hold.next`, default a `b` key press. Blanks Google Slides, does nothing in LibreOffice Impress (the only two tried) |
-| Hold Back | Runs `hold.back`, default none |
+| Hold Back | Runs `hold.back`, default the laser |
 | Tap Next or Back | Arrow keys, no software involved |
-
-Magnify shows the active window only. The circle stays empty outside it
 
 ### Commands and options
 
@@ -107,14 +105,14 @@ File: `~/.config/spotlight-rs/config.toml` (or under `$XDG_CONFIG_HOME`)
 
 ```
 mkdir -p ~/.config/spotlight-rs
-spotlight-rs example-config > ~/.config/spotlight-rs/config.toml
+target/release/spotlight-rs example-config > ~/.config/spotlight-rs/config.toml
 ```
 
 Every key is optional. A file can hold only what you change
 
 ```toml
 [hold]
-back = "laser"
+next = "none"
 
 [look]
 zoom = 3.0
@@ -149,7 +147,7 @@ zoom = 3.0
 
 | Key | Default | Meaning |
 |---|---|---|
-| `next`, `back` | `"blank_screen"`, `"none"` | Action: `none`, `blank_screen`, `custom_keystroke` or `laser` |
+| `next`, `back` | `"blank_screen"`, `"laser"` | Action: `none`, `blank_screen`, `custom_keystroke` or `laser` |
 | `blank_key` | `"b"` | Key sent for `blank_screen` |
 | `custom_keystroke` | `""` | Key or combination, for example `"ctrl+shift+b"` (modifiers first) |
 
@@ -171,7 +169,7 @@ zoom = 3.0
 | `device_name`, `keyboard_name` | `"Logitech USB Receiver Mouse"`, `"Logitech USB Receiver"` | Names of the remote's input nodes |
 | `idle_ms` | 400 | Hide delay after the last motion when holds are not seen over HID++, at least 50 |
 | `swallow_clicks` | true | Take over the remote's mouse so taps do not click. Needs `/dev/uinput` |
-| `double_press_ms` | 400 | Window for a double press, 10 to 5000 |
+| `double_press_ms` | 700 | Window for a double press, 10 to 5000 |
 | `laser_speed`, `pointer_speed` | 1.0, 1.0 | Cursor movement per movement report during a laser hold and a top-button hold, 0.1 to 10 |
 
 ## Troubleshooting

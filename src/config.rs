@@ -145,7 +145,7 @@ pub struct Hold {
 
 impl Default for Hold {
     fn default() -> Self {
-        Self { next: HoldAction::BlankScreen, back: HoldAction::None, custom_keystroke: String::new(), blank_key: "b".into() }
+        Self { next: HoldAction::BlankScreen, back: HoldAction::Laser, custom_keystroke: String::new(), blank_key: "b".into() }
     }
 }
 
@@ -178,7 +178,7 @@ impl Default for Input {
             swallow_clicks: true,
             laser_speed: 1.0,
             pointer_speed: 1.0,
-            double_press_ms: 400,
+            double_press_ms: 700,
         }
     }
 }
@@ -362,7 +362,7 @@ end_length = 5           # 1 to 10
 
 [hold]
 next = "blank_screen"    # none, blank_screen, custom_keystroke or laser
-back = "none"
+back = "laser"
 custom_keystroke = ""     # for example "b" or "ctrl+shift+b"
 blank_key = "b"           # key sent for blank_screen
 
@@ -373,7 +373,7 @@ idle_ms = 400
 swallow_clicks = true    # take over the remote's mouse so taps do not click
 laser_speed = 1.0        # cursor movement per movement report while a laser hold is active
 pointer_speed = 1.0      # the same while the top button is held (highlight, magnify)
-double_press_ms = 400
+double_press_ms = 700
 "##;
 
 #[cfg(test)]
