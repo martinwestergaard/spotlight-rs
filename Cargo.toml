@@ -1,0 +1,20 @@
+[package]
+name = "spotlight-rs"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+libc = "0.2.191"
+serde = { version = "1.0.229", features = ["derive"] }
+smithay-client-toolkit = { version = "0.20", default-features = false }
+toml = "1.2.1"
+wayland-backend = "0.3"
+wayland-client = "0.31.15"
+wayland-scanner = "0.31"
+wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
+
+[lib]
+doctest = false
+
+[profile.dev]
+opt-level = 3
