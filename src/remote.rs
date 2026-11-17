@@ -180,6 +180,8 @@ pub(crate) struct Remote {
     laser_button: Option<Button>,
     /// Fractions of cursor motion not yet sent.
     laser_acc: (f64, f64),
+    /// When the top button's current hold started (for the log).
+    top_hold_since: u64,
     last_hold_try: Instant,
     last_device_try: Instant,
 }
@@ -198,6 +200,7 @@ impl Remote {
             vkbd: None,
             laser_button: None,
             laser_acc: (0.0, 0.0),
+            top_hold_since: 0,
             last_hold_try: long_ago,
             last_device_try: long_ago,
         }
@@ -329,9 +332,12 @@ impl Remote {
                 Some(logitech_protocol::Notification::Hold(new)) => {
                     let old = self.hold.as_ref().map(|h| h.state).unwrap_or_default();
                     if new.top && !old.top {
+                        eprintln!("top hold on");
+                        self.top_hold_since = now;
                         effects.extend(state.top_hold_press(now));
                     }
                     if !new.top && old.top {
+                        eprintln!("top hold off (held {} ms)", now.saturating_sub(self.top_hold_since));
                         effects.extend(state.top_hold_release());
                     }
                     for (button, was, pressed, action) in [

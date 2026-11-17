@@ -324,6 +324,7 @@ fn run(config_path: PathBuf, demo: Option<Demo>, timer_now: bool) {
     let now_ms = || start.elapsed().as_millis() as u64;
     let mut remote = Remote::new(app.state.config());
     let mut last_config_poll = Instant::now();
+    let mut last_tap_ms: Option<u64> = None;
     let mut demo_phase = 0;
 
     if is_demo {
@@ -423,7 +424,13 @@ fn run(config_path: PathBuf, demo: Option<Demo>, timer_now: bool) {
             let now = now_ms();
             let fx = match ev {
                 RemoteEvent::Motion => app.state.remote_motion(now),
-                RemoteEvent::TopPress => app.state.top_press(now),
+                RemoteEvent::TopPress => {
+                    match last_tap_ms.replace(now) {
+                        Some(before) => eprintln!("tap (+{} ms since the previous tap)", now - before),
+                        None => eprintln!("tap"),
+                    }
+                    app.state.top_press(now)
+                }
                 RemoteEvent::NextPress => app.state.next_press(now),
             };
             app.apply(fx);
