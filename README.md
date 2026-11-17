@@ -75,7 +75,7 @@ Leave it running in a terminal. Ctrl+C or `kill` stops it and undoes what it cha
 | You do | Result |
 |---|---|
 | Hold the top button and move | Current mode follows the remote, stays while held even when still, hides on release |
-| Double press the top button | Next mode (two taps within 700 ms). The first mode is highlight |
+| Double press the top button | Next mode. Two taps within 700 ms, or a tap followed within 700 ms by a press-and-hold, which then shows the new mode. The first mode is highlight |
 | Hold Next | Runs `hold.next`, default a `b` key press. Blanks Google Slides, does nothing in LibreOffice Impress (the only two tried) |
 | Hold Back | Runs `hold.back`, default the laser |
 | Tap Next or Back | Arrow keys, no software involved |
@@ -94,6 +94,7 @@ Leave it running in a terminal. Ctrl+C or `kill` stops it and undoes what it cha
 |---|---|---|
 | `--config PATH` | run, demo, setup | Use another config file |
 | `--timer-now` | run | Start the countdown at launch |
+| `--trace` | run | Also log taps, holds, raw button events, hold reports and overlay shows, for diagnosing input |
 | `--mode highlight\|magnify\|circle\|laser` | demo | Pointer to draw |
 | `--at X,Y` | demo | Position in logical pixels |
 | `--seconds N` | demo | Duration, default 10 |
@@ -169,7 +170,8 @@ zoom = 3.0
 | `device_name`, `keyboard_name` | `"Logitech USB Receiver Mouse"`, `"Logitech USB Receiver"` | Names of the remote's input nodes |
 | `idle_ms` | 400 | Hide delay after the last motion when holds are not seen over HID++, at least 50 |
 | `swallow_clicks` | true | Take over the remote's mouse so taps do not click. Needs `/dev/uinput` |
-| `double_press_ms` | 700 | Window for a double press, 10 to 5000 |
+| `double_press_ms` | 700 | Window for a double press (tap, then a tap or a hold), 10 to 5000 |
+| `tap_max_ms` | 450 | A press shorter than this counts as a tap, 100 to 2000. The remote reports presses slower than a quick click as short holds, and these count too |
 | `laser_speed`, `pointer_speed` | 1.0, 1.0 | Cursor movement per movement report during a laser hold and a top-button hold, 0.1 to 10 |
 
 ## Troubleshooting

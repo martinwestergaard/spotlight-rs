@@ -284,6 +284,9 @@ impl Remote {
         match r.read_raw() {
             Ok(raws) => {
                 for raw in raws {
+                    if raw.ty == EV_KEY && crate::TRACE.load(std::sync::atomic::Ordering::Relaxed) {
+                        eprintln!("[{} ms] mouse button code {} value {}", crate::trace_ms(), raw.code, raw.value);
+                    }
                     if self.grabbed {
                         let is_tap = raw.ty == EV_KEY && raw.code == BTN_LEFT;
                         let forward = matches!(raw.ty, 0 | EV_REL | EV_KEY) && !(is_tap && swallow);
@@ -330,15 +333,20 @@ impl Remote {
             let feat = self.hold.as_ref().map(|h| h.feat).unwrap_or(0);
             match logitech_protocol::parse_notification(&report, feat) {
                 Some(logitech_protocol::Notification::Hold(new)) => {
+                    if crate::TRACE.load(std::sync::atomic::Ordering::Relaxed) {
+                        eprintln!("[{} ms] hid++ hold report: top {} next {} back {}", crate::trace_ms(), new.top, new.next, new.back);
+                    }
                     let old = self.hold.as_ref().map(|h| h.state).unwrap_or_default();
                     if new.top && !old.top {
-                        eprintln!("top hold on");
+                        trace!("top hold on");
                         self.top_hold_since = now;
                         effects.extend(state.top_hold_press(now));
                     }
                     if !new.top && old.top {
-                        eprintln!("top hold off (held {} ms)", now.saturating_sub(self.top_hold_since));
-                        effects.extend(state.top_hold_release());
+                        let held = now.saturating_sub(self.top_hold_since);
+                        let tap = held < cfg.input.tap_max_ms;
+                        trace!("top hold off (held {held} ms{})", if tap { ", counted as a tap" } else { "" });
+                        effects.extend(state.top_hold_release_after(now, held));
                     }
                     for (button, was, pressed, action) in [
                         (Button::Next, old.next, new.next, cfg.hold.next),

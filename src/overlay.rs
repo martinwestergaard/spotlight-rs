@@ -188,7 +188,7 @@ impl LayerShellHandler for App {
         self.width = configure.new_size.0.max(1);
         self.height = configure.new_size.1.max(1);
         self.configured = true;
-        eprintln!("configured {}x{} (visible: {})", self.width, self.height, self.layer.is_some());
+        trace!("configured {}x{} (visible: {})", self.width, self.height, self.layer.is_some());
         if self.layer.is_some() {
             self.draw();
         }
@@ -252,12 +252,19 @@ impl Dispatch<WpViewport, ()> for App {
     fn event(_: &mut Self, _: &WpViewport, _: <WpViewport as wayland_client::Proxy>::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {}
 }
 
+/// The last scale that was logged (as f64 bits), so the log line appears once.
+static LOGGED_SCALE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 impl Dispatch<WpFractionalScaleV1, ()> for App {
     fn event(app: &mut Self, _: &WpFractionalScaleV1, event: wp_fractional_scale_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
         // The scale arrives in units of 1/120.
         let wp_fractional_scale_v1::Event::PreferredScale { scale } = event else { return };
         app.scale = f64::from(scale) / 120.0;
-        eprintln!("scale {:.3}", app.scale);
+        // Once, and again if it changes: it tells whether drawing is sharp on this screen.
+        let bits = app.scale.to_bits();
+        if LOGGED_SCALE.swap(bits, std::sync::atomic::Ordering::Relaxed) != bits {
+            eprintln!("scale {:.3}", app.scale);
+        }
         if app.configured && app.layer.is_some() {
             app.draw();
         }

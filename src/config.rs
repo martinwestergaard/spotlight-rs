@@ -167,6 +167,9 @@ pub struct Input {
     pub pointer_speed: f64,
     /// Two presses of the top button within this many milliseconds switch the pointer mode.
     pub double_press_ms: u64,
+    /// A press of the top button shorter than this counts as a tap, even when the remote reports it
+    /// as a short hold (it does so for presses longer than a quick click).
+    pub tap_max_ms: u64,
 }
 
 impl Default for Input {
@@ -179,6 +182,7 @@ impl Default for Input {
             laser_speed: 1.0,
             pointer_speed: 1.0,
             double_press_ms: 700,
+            tap_max_ms: 450,
         }
     }
 }
@@ -234,6 +238,9 @@ impl Config {
             if !(0.0..=500.0).contains(&v) {
                 return Err(format!("{name} must be between 0 and 500"));
             }
+        }
+        if !(100..=2000).contains(&self.input.tap_max_ms) {
+            return Err("input.tap_max_ms must be between 100 and 2000".into());
         }
         if !(10..=5000).contains(&self.input.double_press_ms) {
             return Err("input.double_press_ms must be between 10 and 5000".into());
@@ -374,6 +381,7 @@ swallow_clicks = true    # take over the remote's mouse so taps do not click
 laser_speed = 1.0        # cursor movement per movement report while a laser hold is active
 pointer_speed = 1.0      # the same while the top button is held (highlight, magnify)
 double_press_ms = 700
+tap_max_ms = 450         # a press shorter than this counts as a tap, even if the remote reports it as a short hold
 "##;
 
 #[cfg(test)]
@@ -429,6 +437,8 @@ mod tests {
             assert!(Config::parse(&format!("[look]\n{bad}\n")).is_err(), "{bad}");
         }
         assert!(Config::parse("[input]\ndouble_press_ms = 0\n").is_err());
+        assert!(Config::parse("[input]\ntap_max_ms = 50\n").is_err());
+        assert!(Config::parse("[input]\ntap_max_ms = 600\n").is_ok());
         assert!(Config::parse("[timer]\nminutes = inf\n").is_err());
         assert!(Config::parse("[timer]\nminutes = 1.0\nwarn_minutes = inf\n").is_err());
         assert!(Config::parse("[hold]\nback = \"laser\"\n").is_ok());

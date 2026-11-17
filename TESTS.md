@@ -24,6 +24,8 @@ Tell me: lag, whether the circle sits exactly on the cursor, anything odd at the
 Tap the top button twice quickly, then hold and move
 Expect: log line "mode: Magnify" and the zoomed active window inside the ring (highlight and magnify are on by default, circle is off); a second double press goes back to Highlight
 Known: the taps are swallowed (input.swallow_clicks), so they do not click
+Tap twice, once quickly and once slowly (about a third of a second): both count as taps
+Tap once, then press and hold within 0.7 s: the mode switches and the pointer shows in the new mode
 Tell me: how fast you can double press before it stops counting (the window is 700 ms in the config)
 
 ## 4 Timer

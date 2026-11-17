@@ -49,6 +49,8 @@ pub struct State {
     laser_last_report_ms: u64,
     top_held: bool,
     top_last_report_ms: u64,
+    /// The current top hold already switched the mode (it was the second press of a double press).
+    top_hold_switched: bool,
 }
 
 impl State {
@@ -68,6 +70,7 @@ impl State {
             laser_last_report_ms: 0,
             top_held: false,
             top_last_report_ms: 0,
+            top_hold_switched: false,
         }
     }
 
@@ -149,16 +152,28 @@ impl State {
 
     /// The top button's hold started (seen over HID++): show the overlay and keep it up until the
     /// hold ends, however still the remote is.
+    ///
+    /// A hold that starts within `double_press_ms` after a tap is the second press of a double press:
+    /// it switches the mode, and the overlay comes up in the new mode.
     pub fn top_hold_press(&mut self, now_ms: u64) -> Vec<Effect> {
         self.top_held = true;
         self.top_last_report_ms = now_ms;
         self.last_motion_ms = now_ms;
+        let window = self.cfg.input.double_press_ms;
+        let second_press = matches!(self.last_press_ms, Some(t) if now_ms.saturating_sub(t) <= window);
+        let mut fx = Vec::new();
+        if second_press {
+            self.last_press_ms = None;
+            self.top_hold_switched = true;
+            fx.extend(self.cycle_mode());
+        }
         if self.active {
-            vec![Effect::Redraw]
+            fx.push(Effect::Redraw);
         } else {
             self.active = true;
-            vec![Effect::ShowOverlay]
+            fx.push(Effect::ShowOverlay);
         }
+        fx
     }
 
     /// A movement report arrived during the top hold (keeps the failsafe from firing).
@@ -173,6 +188,7 @@ impl State {
             return Vec::new();
         }
         self.top_held = false;
+        self.top_hold_switched = false;
         if self.active && !self.laser_held {
             self.active = false;
             self.pointer = None;
@@ -180,6 +196,19 @@ impl State {
         } else {
             Vec::new()
         }
+    }
+
+    /// The top button was released after `held_ms`. A press shorter than `input.tap_max_ms` is a tap
+    /// (the remote reports presses slower than a quick click as short holds, with no click), so it
+    /// counts toward a double press.
+    pub fn top_hold_release_after(&mut self, now_ms: u64, held_ms: u64) -> Vec<Effect> {
+        let switched = self.top_hold_switched;
+        let mut fx = self.top_hold_release();
+        // A hold that already switched the mode is not also the first tap of the next double press.
+        if !switched && held_ms < self.cfg.input.tap_max_ms {
+            fx.extend(self.top_press(now_ms));
+        }
+        fx
     }
 
     /// A movement report arrived during the laser hold (keeps the failsafe from firing).
@@ -361,6 +390,78 @@ mod tests {
         assert_eq!(s.top_hold_release(), vec![Effect::HideOverlay]);
         assert!(!s.active() && !s.top_held());
         assert_eq!(s.top_hold_release(), vec![]);
+    }
+
+    #[test]
+    fn a_tap_then_a_hold_switches_the_mode_and_shows_the_new_one() {
+        let mut s = State::new(cfg());
+        s.top_press(0);
+        let fx = s.top_hold_press(400);
+        assert_eq!(fx, vec![Effect::ModeChanged(Mode::Magnify), Effect::ShowOverlay]);
+        assert_eq!(s.mode(), Mode::Magnify);
+        assert_eq!(s.top_hold_release_after(2000, 1600), vec![Effect::HideOverlay]);
+    }
+
+    #[test]
+    fn a_hold_long_after_a_tap_does_not_switch() {
+        let mut s = State::new(cfg());
+        s.top_press(0);
+        let fx = s.top_hold_press(5000);
+        assert_eq!(fx, vec![Effect::ShowOverlay]);
+        assert_eq!(s.mode(), Mode::Highlight);
+    }
+
+    #[test]
+    fn a_short_switching_hold_is_not_also_the_first_tap_of_the_next_pair() {
+        let mut s = State::new(cfg());
+        s.top_press(0);
+        s.top_hold_press(300); // switches to Magnify
+        s.top_hold_release_after(600, 300); // short, but already used up
+        // one more quick tap must not switch again
+        assert_eq!(s.top_press(900), vec![]);
+        assert_eq!(s.mode(), Mode::Magnify);
+    }
+
+    #[test]
+    fn a_hold_that_follows_a_switch_needs_a_fresh_tap_to_switch_again() {
+        let mut s = State::new(cfg());
+        s.top_press(0);
+        s.top_press(100); // double tap: Magnify
+        let fx = s.top_hold_press(300);
+        assert_eq!(fx, vec![Effect::ShowOverlay], "no second switch");
+        assert_eq!(s.mode(), Mode::Magnify);
+    }
+
+    #[test]
+    fn two_short_holds_switch_the_mode_like_two_taps() {
+        let mut s = State::new(cfg());
+        s.top_hold_press(0);
+        s.top_hold_release_after(200, 200); // a slow tap
+        let fx = s.top_hold_press(400); // the second press, a hold
+        assert!(fx.contains(&Effect::ModeChanged(Mode::Magnify)), "{fx:?}");
+        let fx = s.top_hold_release_after(750, 350);
+        assert!(!fx.iter().any(|e| matches!(e, Effect::ModeChanged(_))), "no second switch: {fx:?}");
+    }
+
+    #[test]
+    fn a_tap_and_a_short_hold_switch_the_mode_once() {
+        let mut s = State::new(cfg());
+        s.top_press(0);
+        let fx = s.top_hold_press(300);
+        assert!(fx.contains(&Effect::ModeChanged(Mode::Magnify)), "{fx:?}");
+        let fx = s.top_hold_release_after(660, 360);
+        assert!(!fx.iter().any(|e| matches!(e, Effect::ModeChanged(_))), "{fx:?}");
+        assert_eq!(s.mode(), Mode::Magnify);
+    }
+
+    #[test]
+    fn a_long_hold_is_not_a_tap() {
+        let mut s = State::new(cfg());
+        s.top_hold_press(0);
+        s.top_hold_release_after(2000, 2000);
+        // the long hold must not count as the first tap of a pair
+        assert_eq!(s.top_press(2300), vec![]);
+        assert_eq!(s.mode(), Mode::Highlight);
     }
 
     #[test]

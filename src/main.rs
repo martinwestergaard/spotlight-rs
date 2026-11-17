@@ -1,7 +1,7 @@
 //! spotlight-rs: on-screen pointer for the Logitech Spotlight on COSMIC (Wayland).
 //!
 //! Commands:
-//!   spotlight-rs [run] [--config PATH] [--timer-now]
+//!   spotlight-rs [run] [--config PATH] [--timer-now] [--trace]
 //!                                        run the program (default); --timer-now starts the countdown at launch
 //!   spotlight-rs setup                   check access and protocols, print what to fix
 //!   spotlight-rs example-config          print a config file with every default
@@ -41,6 +41,15 @@ use wayland_client::{
     Connection,
 };
 
+/// Like eprintln!, but only with `--trace` (input and overlay detail that is too chatty for normal use).
+macro_rules! trace {
+    ($($arg:tt)*) => {
+        if crate::TRACE.load(std::sync::atomic::Ordering::Relaxed) {
+            eprintln!($($arg)*);
+        }
+    };
+}
+
 /// Like eprintln! but never panics when stderr is gone (a closed terminal).
 macro_rules! say {
     ($($arg:tt)*) => {{
@@ -54,6 +63,15 @@ mod remote;
 
 use overlay::App;
 use remote::Remote;
+
+/// `--trace`: also log taps, holds, raw button events, HID++ hold reports and overlay shows.
+pub(crate) static TRACE: AtomicBool = AtomicBool::new(false);
+static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+
+/// Milliseconds since the program started (for the trace).
+pub(crate) fn trace_ms() -> u64 {
+    START.get_or_init(Instant::now).elapsed().as_millis() as u64
+}
 
 pub(crate) static STOP: AtomicBool = AtomicBool::new(false);
 static STOP_SIGNAL: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
@@ -122,6 +140,7 @@ fn parse_args(args: &[String]) -> Result<Command, String> {
             "--seconds" => demo.seconds = value("--seconds")?.parse().map_err(|_| "bad --seconds")?,
             "--cycle" => demo.cycle = true,
             "--timer-now" => timer_now = true,
+            "--trace" => TRACE.store(true, Ordering::SeqCst),
             "--uinput" => uinput_rule = true,
             other => return Err(format!("unknown argument {other:?}")),
         }
@@ -320,7 +339,7 @@ fn run(config_path: PathBuf, demo: Option<Demo>, timer_now: bool) {
         },
     };
 
-    let start = Instant::now();
+    let start = *START.get_or_init(Instant::now);
     let now_ms = || start.elapsed().as_millis() as u64;
     let mut remote = Remote::new(app.state.config());
     let mut last_config_poll = Instant::now();
@@ -426,8 +445,8 @@ fn run(config_path: PathBuf, demo: Option<Demo>, timer_now: bool) {
                 RemoteEvent::Motion => app.state.remote_motion(now),
                 RemoteEvent::TopPress => {
                     match last_tap_ms.replace(now) {
-                        Some(before) => eprintln!("tap (+{} ms since the previous tap)", now - before),
-                        None => eprintln!("tap"),
+                        Some(before) => trace!("tap (+{} ms since the previous tap)", now - before),
+                        None => trace!("tap"),
                     }
                     app.state.top_press(now)
                 }
