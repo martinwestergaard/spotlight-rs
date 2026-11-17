@@ -5,6 +5,7 @@
 //!                                        run the program (default); --timer-now starts the countdown at launch
 //!   spotlight-rs setup                   check access and protocols, print what to fix
 //!   spotlight-rs example-config          print a config file with every default
+//!   spotlight-rs udev-rules [--uinput]   print the udev rule for the receiver (or for /dev/uinput)
 //!   spotlight-rs demo [--mode M] [--at X,Y] [--seconds N] [--cycle] [--config PATH]
 //!                                        draw one pointer, click-through, for screenshots
 //!
@@ -84,6 +85,7 @@ struct Demo {
 enum Command {
     Run { config: PathBuf, demo: Option<Demo>, timer_now: bool },
     ExampleConfig,
+    UdevRules { uinput: bool },
     Setup { config: PathBuf },
 }
 
@@ -98,6 +100,7 @@ fn parse_args(args: &[String]) -> Result<Command, String> {
     }
     let mut demo = Demo { mode: None, at: None, seconds: 10, cycle: false };
     let mut timer_now = false;
+    let mut uinput_rule = false;
     while let Some(a) = iter.next() {
         let mut value = |name: &str| iter.next().cloned().ok_or(format!("{name} needs a value"));
         match a.as_str() {
@@ -119,6 +122,7 @@ fn parse_args(args: &[String]) -> Result<Command, String> {
             "--seconds" => demo.seconds = value("--seconds")?.parse().map_err(|_| "bad --seconds")?,
             "--cycle" => demo.cycle = true,
             "--timer-now" => timer_now = true,
+            "--uinput" => uinput_rule = true,
             other => return Err(format!("unknown argument {other:?}")),
         }
     }
@@ -126,6 +130,7 @@ fn parse_args(args: &[String]) -> Result<Command, String> {
         "run" => Ok(Command::Run { config, demo: None, timer_now }),
         "demo" => Ok(Command::Run { config, demo: Some(demo), timer_now: false }),
         "example-config" => Ok(Command::ExampleConfig),
+        "udev-rules" => Ok(Command::UdevRules { uinput: uinput_rule }),
         "setup" => Ok(Command::Setup { config }),
         other => Err(format!("unknown command {other:?}")),
     }
@@ -135,6 +140,7 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match parse_args(&args) {
         Ok(Command::ExampleConfig) => print!("{}", config::EXAMPLE),
+        Ok(Command::UdevRules { uinput }) => print!("{}", if uinput { UINPUT_RULE } else { UDEV_RULE }),
         Ok(Command::Setup { config }) => setup(&config),
         Ok(Command::Run { config, demo, timer_now }) => run(config, demo, timer_now),
         Err(e) => {
@@ -151,14 +157,18 @@ const UDEV_RULE: &str = "# Logitech Spotlight USB Receiver: user access for the 
 SUBSYSTEMS==\"usb\", ATTRS{idVendor}==\"046d\", ATTRS{idProduct}==\"c53e\", MODE=\"0660\", TAG+=\"uaccess\"\n\
 SUBSYSTEM==\"hidraw\", ATTRS{idVendor}==\"046d\", ATTRS{idProduct}==\"c53e\", MODE=\"0660\", TAG+=\"uaccess\"\n";
 
+/// Gives the logged-in user write access to /dev/uinput. Many systems already ship this rule.
+const UINPUT_RULE: &str = "# /dev/uinput: user access for the session user\n\
+KERNEL==\"uinput\", SUBSYSTEM==\"misc\", TAG+=\"uaccess\", OPTIONS+=\"static_node=uinput\"\n";
+
 fn setup(config_path: &std::path::Path) {
-    let mut problems = 0;
-    let mut note = |ok: bool, good: &str, bad: &str| {
+    let problems = std::cell::Cell::new(0);
+    let note = |ok: bool, good: &str, bad: &str| {
         if ok {
             println!("ok       {good}");
         } else {
             println!("MISSING  {bad}");
-            problems += 1;
+            problems.set(problems.get() + 1);
         }
     };
 
@@ -194,8 +204,13 @@ fn setup(config_path: &std::path::Path) {
         Err(e) => note(false, "", &format!("no Wayland connection: {e} (run this inside the desktop session)")),
     }
 
+    let receiver_problems = problems.get();
     let uinput_ok = std::fs::OpenOptions::new().write(true).open("/dev/uinput").is_ok();
-    println!("{}/dev/uinput writable (needed to swallow clicks): {}", if uinput_ok { "ok       " } else { "info     " }, uinput_ok);
+    note(
+        uinput_ok,
+        "/dev/uinput is writable (taps are swallowed, holds move the cursor)",
+        "/dev/uinput is not writable: taps will click and hold actions will not work (see the fix list)",
+    );
 
     let have_config = config_path.exists();
     println!(
@@ -212,14 +227,24 @@ fn setup(config_path: &std::path::Path) {
             config_path.display()
         );
     }
-    if problems == 0 {
+    if problems.get() == 0 {
         println!("\nNothing required to fix. Run: spotlight-rs");
         return;
     }
     println!("\nFix list. These need sudo, so run them yourself:");
-    println!("\n  sudo tee /etc/udev/rules.d/55-spotlight.rules >/dev/null <<'EOF'\n{UDEV_RULE}EOF");
+    // The commands use a pipe, not a here-document, so they work in bash and in fish.
+    let exe = std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_else(|_| "spotlight-rs".into());
+    if receiver_problems > 0 {
+        println!("\n  {exe} udev-rules | sudo tee /etc/udev/rules.d/55-spotlight.rules >/dev/null");
+    }
+    if !uinput_ok {
+        println!("\n  {exe} udev-rules --uinput | sudo tee /etc/udev/rules.d/55-spotlight-uinput.rules >/dev/null");
+    }
     println!("  sudo udevadm control --reload-rules && sudo udevadm trigger");
-    println!("\nThen unplug and replug the receiver.");
+    if receiver_problems > 0 {
+        println!("\nThen unplug and replug the receiver.");
+    }
+    println!("Then run setup again to check. If /dev/uinput is still not writable, log out and in again.");
 }
 
 fn run(config_path: PathBuf, demo: Option<Demo>, timer_now: bool) {

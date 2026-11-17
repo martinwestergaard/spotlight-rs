@@ -1,126 +1,116 @@
 # spotlight-rs
 
-On-screen pointer for the Logitech Spotlight presentation remote on Linux, written for Pop!_OS with the COSMIC desktop (Wayland)
+On-screen pointer for the Logitech Spotlight presentation remote, for Pop!_OS with the COSMIC desktop (Wayland)
 
-Hold the top button and the screen shows a pointer that follows the remote. The pointer has these modes
+Hold the top button and a pointer follows the remote: a highlight, a live magnifier or a red laser dot. Other buttons run actions such as blanking the screen, and a timer can buzz the remote before your time is up
 
-- Highlight: the screen dims, a clear circle stays around the pointer
-- Magnify: a live zoom of the active window inside a circle
-- Laser: a glowing red dot, shown while Back is held
-- Circle: a plain ring, off by default
+Built and tested with one Spotlight (receiver 046d:c53e) on COSMIC
 
-Other features
+## Features
 
-- Double press the top button to switch between highlight and magnify
-- Taps of the top button do not click, so a double press never advances a slide
-- Hold Next to send a key, by default the blank-screen key `b`
-- A countdown timer that vibrates the remote before the end and at the end
-- A config file that is re-read while the program runs
+| Mode | What you see | Default |
+|---|---|---|
+| Highlight | Screen dims, clear circle around the pointer | On |
+| Magnify | Live zoom of the active window inside a circle | On |
+| Laser | Glowing red dot while Back is held | Set `hold.back = "laser"` |
+| Circle | Plain ring | Off |
 
-It was built and tested with one Spotlight (USB receiver 046d:c53e) on COSMIC. Other desktops and remotes are untested
+- Double press the top button to switch modes
+- Taps of the top button are swallowed, so a double press never advances a slide
+- Hold Next to send a key, by default `b` (blank screen)
+- Countdown timer that buzzes the remote before the end and at the end
+- Config file reloaded while the program runs
 
 ## Requirements
 
-- A Logitech Spotlight with its USB receiver
-- COSMIC (Wayland). The overlay needs the layer-shell protocol. Magnify also needs `ext_image_copy_capture` and COSMIC's toplevel info protocol. `spotlight-rs setup` reports what the compositor offers
-- A Rust toolchain that supports edition 2024 (it builds with rust 1.95 from apt on the development machine)
-- Read access to the receiver's input and hidraw nodes, and write access to `/dev/uinput` (see Install)
+- Logitech Spotlight with its USB receiver
+- COSMIC session (Wayland). `setup` checks the protocols it needs
+- Rust 1.85 or newer with `cargo` (edition 2024), and a C linker (`build-essential` on Ubuntu-based systems)
+- `sudo` once for a udev rule
+
+No other system libraries: the program links only `libc` and `libgcc_s`. The project is all Rust, with no shell scripts. The commands below work in bash and fish
 
 ## Install
 
-Build
-
 ```
-git clone <repository url>
+sudo apt install git build-essential rustc cargo
+git clone https://github.com/martinwestergaard/spotlight-rs.git
 cd spotlight-rs
 cargo build --release
-```
-
-The program is then `target/release/spotlight-rs`. To put it on your path instead, run `cargo install --path .`, which installs to `~/.cargo/bin`, together with the small hardware test programs in `src/bin`
-
-Check the machine
-
-```
 target/release/spotlight-rs setup
 ```
 
-Setup reads the state of the receiver, the input nodes, the compositor and `/dev/uinput`. It prints `ok`, `info` or `MISSING` for each, and the commands to fix what is missing. It never runs sudo. You run the commands yourself
+If your distribution's Rust is older than 1.85 (`rustc --version`), use rustup instead. `cargo install --path .` puts the program on your path
 
-If the receiver is not accessible, the fix is a udev rule that gives the logged-in user access to it
+`setup` checks the receiver, input nodes, compositor and `/dev/uinput`, and prints the fix for anything `MISSING`. It never runs sudo
+
+### Device access
+
+The program needs to read the receiver's mouse and keyboard nodes, write its HID++ node (vibration, hold detection), and write `/dev/uinput` (swallow taps, move the cursor, send keys). Without `/dev/uinput` the pointer still shows, but taps click and advance your slides
+
+Receiver rule, then replug the receiver
 
 ```
-sudo tee /etc/udev/rules.d/55-spotlight.rules >/dev/null <<'EOF'
-# Logitech Spotlight USB Receiver: user access for the session user
-SUBSYSTEMS=="usb", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="c53e", MODE="0660", TAG+="uaccess"
-SUBSYSTEM=="hidraw", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="c53e", MODE="0660", TAG+="uaccess"
-EOF
+target/release/spotlight-rs udev-rules | sudo tee /etc/udev/rules.d/55-spotlight.rules >/dev/null
 sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
 
-Then unplug and replug the receiver
-
-`/dev/uinput` is needed to swallow taps, to move the cursor during a hold, and to send the hold-action key. Setup reports `info` with `false` when it is not writable. It was already writable on the development machine, and how it got that way was not checked. Without it the program still shows the pointer, but taps click and the hold actions do not work
-
-## Run
+`/dev/uinput` is already writable on the development machine through a system rule. If `setup` reports it `MISSING`, add this one. It is untested on a machine without the system rule
 
 ```
-spotlight-rs
+target/release/spotlight-rs udev-rules --uinput | sudo tee /etc/udev/rules.d/55-spotlight-uinput.rules >/dev/null
+sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
 
-Leave it running in a terminal. Hold the top button and move the remote. Stop it with Ctrl+C (closing the terminal or a plain `kill` stops it the same way). On exit it undoes the changes it made to the remote and releases the remote's mouse. There is no autostart yet
+Run `setup` again until every line says `ok`
 
-Commands
+## Usage
 
-| Command | What it does |
+```
+target/release/spotlight-rs
+```
+
+Leave it running in a terminal and stop it with Ctrl+C. Closing the terminal or `kill` also stops it cleanly. The rest of this README writes `spotlight-rs`, which works once the program is on your path. Everything is logged to the terminal
+
+| You do | Result |
 |---|---|
-| `spotlight-rs` or `spotlight-rs run` | Run the program |
-| `spotlight-rs setup` | Check access and protocols, print the fixes |
-| `spotlight-rs example-config` | Print a config file with every default |
-| `spotlight-rs demo` | Draw one pointer without the remote, for screenshots |
+| Hold the top button and move | Current mode follows the remote, stays while held even when still, hides on release |
+| Double press the top button | Next mode (two taps within 400 ms). The first mode is highlight |
+| Hold Next | Runs `hold.next`, default a `b` key press. Blanks Google Slides, does nothing in LibreOffice Impress (the only two tried) |
+| Hold Back | Runs `hold.back`, default none |
+| Tap Next or Back | Arrow keys, no software involved |
 
-Options
+Magnify shows the active window only. The circle stays empty outside it
 
-| Option | Used with | What it does |
+### Commands and options
+
+| Command | Does |
+|---|---|
+| `spotlight-rs` or `run` | Run the program |
+| `setup` | Check access and protocols, print fixes |
+| `example-config` | Print a config file with every default |
+| `udev-rules [--uinput]` | Print the udev rule for the receiver, or for `/dev/uinput` |
+| `demo` | Draw one pointer without the remote |
+
+| Option | For | Does |
 |---|---|---|
 | `--config PATH` | run, demo, setup | Use another config file |
-| `--timer-now` | run | Start the countdown at launch, to try the timer |
-| `--mode highlight\|magnify\|circle\|laser` | demo | Which pointer to draw |
-| `--at X,Y` | demo | Pointer position in logical pixels |
-| `--seconds N` | demo | How long to show it, default 10 |
-| `--cycle` | demo | Hide and show the overlay once, to test it |
+| `--timer-now` | run | Start the countdown at launch |
+| `--mode highlight\|magnify\|circle\|laser` | demo | Pointer to draw |
+| `--at X,Y` | demo | Position in logical pixels |
+| `--seconds N` | demo | Duration, default 10 |
+| `--cycle` | demo | Hide and show once |
 
-The demo draws a click-through overlay, so clicks keep working while it is up
+## Configuration
 
-### What the program changes on the remote
-
-Two things, and nothing else
-
-- It makes the remote vibrate for the timer
-- It asks the remote to report holds of Next, Back and the top button over HID++, so it can see a hold start and end. It switches this off again on exit
-
-It never sends Reset, never changes pointer speed and never writes receiver registers. If the program is killed hard, the reporting stays on until a later run ends cleanly, which undoes it. Whether it survives a power cycle of the remote was not checked
-
-## Using it
-
-- Hold the top button and move: the current mode shows and follows the remote. It stays for as long as you hold, even with a still hand, and goes when you let go
-- Double press the top button (two taps within 400 ms): switch mode. The first mode after start is highlight
-- Hold Next: runs the action set in `hold.next`, by default a `b` key press. It blanks the screen in Google Slides and does nothing in LibreOffice Impress (the only two tried)
-- Hold Back: runs the action set in `hold.back`, by default none. Set it to `laser` for the red dot
-- Next and Back taps are plain arrow keys, so slides advance with no software
-- Magnify shows the active window only. Where the circle runs past the window, it stays empty
-
-## Config file
-
-Location: `$XDG_CONFIG_HOME/spotlight-rs/config.toml`, which is `~/.config/spotlight-rs/config.toml` when that variable is not set. Use `--config PATH` for another file
-
-Create one from the defaults
+File: `~/.config/spotlight-rs/config.toml` (or under `$XDG_CONFIG_HOME`)
 
 ```
 mkdir -p ~/.config/spotlight-rs
 spotlight-rs example-config > ~/.config/spotlight-rs/config.toml
 ```
 
-Without a file the defaults are used. Every setting is optional, so a file can hold only the lines you change, for example
+Every key is optional. A file can hold only what you change
 
 ```toml
 [hold]
@@ -130,110 +120,86 @@ back = "laser"
 zoom = 3.0
 ```
 
-### How it works
+- The file reloads within about half a second of saving (log: `config reloaded`)
+- A mistake is rejected with a `config error` line and the previous settings stay. Out-of-range values count as mistakes, and at least one mode must stay enabled
+- `input.device_name` and `input.keyboard_name` need a restart. `input.swallow_clicks` applies after the remote reconnects. `look.hide_cursor` applies the next time the overlay appears
 
-- The file is TOML
-- The program checks the file about twice a second and reloads it when it changes. The log shows `config reloaded`
-- If the file has a mistake, the log shows `config error` with the reason and the previous settings stay in use
-- If you delete the file, the defaults come back
-- Some settings are read only at certain moments. `input.device_name` and `input.keyboard_name` are read once at start, so changing them needs a restart. `input.swallow_clicks` applies fully after the remote reconnects. `look.hide_cursor` applies the next time the overlay appears
-- A value outside its range is rejected as a mistake. At least one of the three pointer modes must stay enabled
-
-### Settings
-
-`[modes.highlight]`, `[modes.magnify]` and `[modes.circle]`
+**`[modes.highlight]`, `[modes.magnify]`, `[modes.circle]`**
 
 | Key | Default | Meaning |
 |---|---|---|
-| `enabled` | highlight true, magnify true, circle false | Whether the mode is in the double-press cycle |
-| `size_percent` | highlight 10, magnify 12, circle 10 | Radius as a percentage of the screen height, 1 to 50 |
+| `enabled` | true, true, false | In the double-press cycle |
+| `size_percent` | 10, 12, 10 | Radius as a percentage of screen height, 1 to 50 |
 
-`[look]`
+**`[look]`** (pixel sizes are logical pixels)
 
 | Key | Default | Meaning |
 |---|---|---|
 | `color` | `"#ffffff"` | Ring and dot color, `#rrggbb` or `#rrggbbaa` |
-| `ring_width` | 3.0 | Ring thickness in pixels, 0 to 500 |
-| `dim_level` | 0.6 | How dark the screen gets outside the highlight circle, 0.0 to 1.0 |
-| `edge_softness` | 6.0 | Soft edge of the highlight circle in pixels, 0 to 500 |
-| `dot_radius` | 0.0 | Radius of a center dot in pixels, 0 for none, up to 500 |
-| `zoom` | 2.0 | Magnify zoom factor, 1 to 8 |
+| `ring_width` | 3.0 | Ring thickness, 0 to 500 |
+| `dim_level` | 0.6 | Darkness outside the highlight circle, 0 to 1 |
+| `edge_softness` | 6.0 | Soft edge of the highlight circle, 0 to 500 |
+| `dot_radius` | 0.0 | Center dot, 0 for none, up to 500 |
+| `zoom` | 2.0 | Magnify zoom, 1 to 8 |
 | `laser_color` | `"#ff0000"` | Laser dot color |
-| `laser_radius` | 12.0 | Laser dot radius in pixels, 1 to 200 |
-| `hide_cursor` | `["highlight", "magnify", "laser"]` | Modes during which the arrow cursor is hidden. Also accepts `"circle"`. Remove `"magnify"` to show the cursor in the lens |
+| `laser_radius` | 12.0 | Laser dot radius, 1 to 200 |
+| `hide_cursor` | `["highlight", "magnify", "laser"]` | Modes that hide the arrow cursor, also `"circle"`. Remove `"magnify"` to see the cursor in the lens |
 
-Pixel sizes are in logical pixels, so they look the same at any display scale
-
-`[hold]`
+**`[hold]`**
 
 | Key | Default | Meaning |
 |---|---|---|
-| `next` | `"blank_screen"` | Action for a hold of Next |
-| `back` | `"none"` | Action for a hold of Back |
+| `next`, `back` | `"blank_screen"`, `"none"` | Action: `none`, `blank_screen`, `custom_keystroke` or `laser` |
 | `blank_key` | `"b"` | Key sent for `blank_screen` |
-| `custom_keystroke` | `""` | Key or combination sent for `custom_keystroke`, for example `"ctrl+shift+b"` |
+| `custom_keystroke` | `""` | Key or combination, for example `"ctrl+shift+b"` (modifiers first) |
 
-Actions are `none`, `blank_screen`, `custom_keystroke` and `laser`. In a combination, modifiers come first and the last part is the key. An unknown key name is a config mistake
-
-`[timer]`
+**`[timer]`** (the countdown starts at the first Next press)
 
 | Key | Default | Meaning |
 |---|---|---|
 | `kind` | `"off"` | `off` or `countdown` |
-| `minutes` | 30.0 | Countdown length in minutes, 0.05 to 10000, fractions allowed |
-| `warn_minutes` | 5.0 | Warn this long before the end, 0 for no warning, up to 10000 |
-| `vibrate` | true | Vibrate the remote at the warning and at the end |
+| `minutes` | 30.0 | Length, 0.05 to 10000 |
+| `warn_minutes` | 5.0 | Warn this long before the end, 0 for none |
+| `vibrate` | true | Buzz at the warning and the end |
 | `vibration_intensity` | 128 | 0 to 255 |
-| `warn_length` | 2 | Length of the warning buzz, 1 to 10 |
-| `end_length` | 5 | Length of the end buzz, 1 to 10 |
+| `warn_length`, `end_length` | 2, 5 | Buzz lengths, 1 to 10 |
 
-The countdown starts at the first press of Next, or at launch with `--timer-now`
-
-`[input]`
+**`[input]`**
 
 | Key | Default | Meaning |
 |---|---|---|
-| `device_name` | `"Logitech USB Receiver Mouse"` | Name of the remote's mouse node |
-| `keyboard_name` | `"Logitech USB Receiver"` | Name of the remote's keyboard node |
-| `idle_ms` | 400 | Hide the pointer this long after the last motion when the top button's hold is not seen over HID++, at least 50 |
+| `device_name`, `keyboard_name` | `"Logitech USB Receiver Mouse"`, `"Logitech USB Receiver"` | Names of the remote's input nodes |
+| `idle_ms` | 400 | Hide delay after the last motion when holds are not seen over HID++, at least 50 |
 | `swallow_clicks` | true | Take over the remote's mouse so taps do not click. Needs `/dev/uinput` |
-| `double_press_ms` | 400 | Two taps within this time switch the mode, 10 to 5000 |
-| `laser_speed` | 1.0 | Cursor movement per movement report during a laser hold, 0.1 to 10 |
-| `pointer_speed` | 1.0 | The same while the top button is held, 0.1 to 10 |
+| `double_press_ms` | 400 | Window for a double press, 10 to 5000 |
+| `laser_speed`, `pointer_speed` | 1.0, 1.0 | Cursor movement per movement report during a laser hold and a top-button hold, 0.1 to 10 |
 
 ## Troubleshooting
 
-- Run `spotlight-rs setup` first. It names what is missing
-- Everything the program does is logged to the terminal: devices found, mode changes, holds, timer events, config reloads and errors
-- The pointer shows but taps click: `/dev/uinput` is not writable, or `swallow_clicks` is false
-- The pointer is soft or the wrong size: the log line `scale ...` shows the scale the compositor reported. If the line is missing, the compositor did not offer fractional scaling and drawing is stretched
-- The remote does not vibrate: the remote may be asleep. The log says `vibration failed` with the reason
+Run `spotlight-rs setup`, then read the terminal log
 
-## Code layout
-
-| File | What it does |
+| Symptom | Cause |
 |---|---|
-| `src/main.rs` | Command line, the `setup` check, signals, and the main loop |
-| `src/overlay.rs` | The full-screen overlay surface, its drawing and its Wayland handlers |
-| `src/remote.rs` | The physical remote: input nodes, the virtual mouse, hold links, hold actions, vibration |
-| `src/state_machine.rs` | Modes, holds, idle hiding and the timer, with no I/O |
-| `src/render.rs` | Draws highlight, ring and laser into a pixel buffer |
-| `src/lens.rs` | The zoomed circle for magnify |
-| `src/window_capture.rs` | Live capture of the active window, on its own thread |
-| `src/cosmic_windows.rs` | Generated bindings for COSMIC's window-info protocol |
-| `src/logitech_protocol.rs` | HID++ messages to the remote: vibrate, divert, hold reports |
-| `src/remote_input.rs` | Reading the remote's mouse and keyboard nodes |
-| `src/virtual_devices.rs` | The virtual mouse and keyboard created through `/dev/uinput` |
-| `src/config.rs` | The config file: settings, validation, hot reload |
-| `src/bin/` | Small hardware test programs: `check_remote`, `list_controls`, `divert_test`, `vibrate_test`, `virtual_mouse_test`, `capture_test` |
+| Taps click | `/dev/uinput` not writable, or `swallow_clicks` is false |
+| Pointer is soft or the wrong size | The log line `scale ...` shows what the compositor reported. If it is missing, fractional scaling is not offered and drawing is stretched |
+| No vibration | The remote may be asleep. The log says `vibration failed` with the reason |
+| Holds stop working after replugging the receiver | The program should reconnect. This is untried on hardware: restart it and open an issue if it fails |
 
-## Tests
+## Development
 
-```
-cargo test
-```
+| File | Does |
+|---|---|
+| `src/main.rs` | Command line, `setup`, signals, main loop |
+| `src/overlay.rs` | Overlay surface, drawing, Wayland handlers |
+| `src/remote.rs` | The remote: input nodes, virtual mouse, hold links, hold actions, vibration |
+| `src/state_machine.rs` | Modes, holds, idle hiding, timer (no I/O) |
+| `src/render.rs`, `src/lens.rs` | Drawing the modes, the zoomed circle |
+| `src/window_capture.rs`, `src/cosmic_windows.rs` | Live capture of the active window, COSMIC window-info bindings |
+| `src/logitech_protocol.rs`, `src/remote_input.rs`, `src/virtual_devices.rs` | HID++ messages, evdev input, uinput devices |
+| `src/config.rs` | Settings, validation, hot reload |
+| `src/bin/` | Hardware test programs |
 
-The unit tests cover the drawing, the state machine, the config and the HID++ framing. `TESTS.md` lists the checks that need the remote in hand
+`cargo test` runs the unit tests. `TESTS.md` lists the checks that need the remote
 
 ## License
 
