@@ -6,6 +6,8 @@ Hold the top button and a pointer follows the remote: a highlight, a live magnif
 
 Built and tested with one Spotlight (receiver 046d:c53e) on COSMIC
 
+<img width="640" height="494" alt="modes-draft" src="https://github.com/user-attachments/assets/92bcdf1f-3c39-4e03-95e7-34a6191715e2" />
+
 ## Features
 
 | Mode | What you see | Default |
